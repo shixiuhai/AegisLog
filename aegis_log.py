@@ -68,7 +68,7 @@ class FirewallAI:
         for line in rules:
             m = re.search(r"(\d{1,3}\.){3}\d{1,3}", line)
             if m:
-                ips.append(m.group(1))
+                ips.append(m.group(0))
         return ips
 
     def trim_blacklist(self):
