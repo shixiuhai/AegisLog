@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AegisLog - 网络安全态势感知大屏</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #0d6efd;
+            --danger-color: #dc3545;
+            --warning-color: #ffc107;
+            --success-color: #198754;
+            --dark-bg: #1a1d21;
+            --card-bg: #2d3035;
+            --text-light: #f8f9fa;
+            --text-muted: #6c757d;
+        }
+        
+        body {
+            background-color: var(--dark-bg);
+            color: var(--text-light);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        
+        .dashboard-header {
+            background: linear-gradient(135deg, var(--primary-color), #0a58ca);
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin: 0;
+        }
+        
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            margin: 0;
+        }
+        
+        .chart-container {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            height: 400px;
+        }
+        
+        .list-container {
+            background: var(--card-bg);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .attack-item {
+            border-left: 4px solid var(--primary-color);
+            padding: 10px 15px;
+            margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+        
+        .attack-critical {
+            border-left-color: var(--danger-color) !important;
+        }
+        
+        .attack-high {
+            border-left-color: var(--warning-color) !important;
+        }
+        
+        .ip-item {
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            border-left: 3px solid var(--danger-color);
+        }
+        
+        .status-badge {
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+        
+        .refresh-time {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+        
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary-color);
+            border-radius: 3px;
+        }
+        
+        /* 动画效果 */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- 头部标题 -->
+        <div class="dashboard-header">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="display-4 mb-0">
+                        <i class="bi bi-shield-lock-fill me-3"></i>
+                        AegisLog 网络安全态势感知大屏
+                    </h1>
+                    <p class="mb-0">实时监控网络攻击态势，智能分析安全威胁</p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="refresh-time">
+                        <i class="bi bi-arrow-clockwise"></i>
+                        最后更新: <span id="lastUpdate">{{ last_update }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 系统状态卡片 -->
+        <div class="row">
+            <div class="col-md-3">
+                <div class="stat-card text-center">
+                    <i class="bi bi-shield-exclamation text-danger" style="font-size: 2rem;"></i>
+                    <h2 class="stat-number text-danger" id="totalAttacks">0</h2>
+                    <p class="stat-label">总攻击次数</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card text-center">
+                    <i class="bi bi-calendar-day text-warning" style="font-size: 2rem;"></i>
+                    <h2 class="stat-number text-warning" id="todayAttacks">0</h2>
+                    <p class="stat-label">今日攻击</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card text-center">
+                    <i class="bi bi-ban text-success" style="font-size: 2rem;"></i>
+                    <h2 class="stat-number text-success" id="blockedCount">0</h2>
+                    <p class="stat-label">已拦截IP</p>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-card text-center">
+                    <i class="bi bi-clock-history text-info" style="font-size: 2rem;"></i>
+                    <h2 class="stat-number text-info" id="uptime">0</h2>
+                    <p class="stat-label">系统运行时间</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 攻击类型分布图表 -->
+        <div class="row">
+            <div class="col-md-8">
+                <div class="chart-container">
+                    <h4><i class="bi bi-pie-chart-fill me-2"></i>攻击类型分布</h4>
+                    <div id="attackTypeChart" style="width: 100%; height: 350px;"></div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="chart-container">
+                    <h4><i class="bi bi-bar-chart-fill me-2"></i>攻击趋势</h4>
+                    <div id="attackTrendChart" style="width: 100%; height: 350px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 最近攻击记录和拦截IP列表 -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="list-container">
+                    <h4><i class="bi bi-clock-history me-2"></i>最近攻击记录</h4>
+                    <div id="recentAttacksList">
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-hourglass-split" style="font-size: 2rem;"></i>
+                            <p>加载中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="list-container">
+                    <h4><i class="bi bi-shield-x me-2"></i>最近拦截IP</h4>
+                    <div id="blockedIpsList">
+                        <div class="text-center text-muted py-4">
+                            <i class="bi bi-hourglass-split" style="font-size: 2rem;"></i>
+                            <p>加载中...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化ECharts图表
+        const attackTypeChart = echarts.init(document.getElementById('attackTypeChart'));
+        const attackTrendChart = echarts.init(document.getElementById('attackTrendChart'));
+
+        // 攻击类型图表配置
+        const attackTypeOption = {
+            tooltip: {
+                trigger: 'item',
+                formatter: '{a} <br/>{b}: {c} ({d}%)'
+            },
+            legend: {
+                orient: 'vertical',
+                right: 10,
+                top: 'center',
+                textStyle: {
+                    color: '#f8f9fa'
+                }
+            },
+            series: [{
+                name: '攻击类型',
+                type: 'pie',
+                radius: ['40%', '70%'],
+                avoidLabelOverlap: false,
+                itemStyle: {
+                    borderColor: '#1a1d21',
+                    borderWidth: 2
+                },
+                label: {
+                    show: false,
+                    position: 'center'
+                },
+                emphasis: {
+                    label: {
+                        show: true,
+                        fontSize: '18',
+                        fontWeight: 'bold'
+                    }
+                },
+                labelLine: {
+                    show: false
+                },
+                data: []
+            }]
+        };
+
+        // 攻击趋势图表配置
+        const attackTrendOption = {
+            tooltip: {
+                trigger: 'axis'
+            },
+            xAxis: {
+                type: 'category',
+                data: [],
+                axisLine: {
+                    lineStyle: {
+                        color: '#6c757d'
+                    }
+                }
+            },
+            yAxis: {
+                type: 'value',
+                axisLine: {
+                    lineStyle: {
+                        color: '#6c757d'
+                    }
+                }
+            },
+            series: [{
+                name: '攻击次数',
+                type: 'bar',
+                data: [],
+                itemStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: '#0d6efd' },
+                        { offset: 1, color: '#0a58ca' }
+                    ])
+                }
+            }]
+        };
+
+        // 应用图表配置
+        attackTypeChart.setOption(attackTypeOption);
+        attackTrendChart.setOption(attackTrendOption);
+
+        // 更新数据函数
+        async function updateDashboard() {
+            try {
+                // 获取系统统计数据
+                const statsResponse = await fetch('/api/stats');
+                const statsData = await statsResponse.json();
+                
+                // 获取攻击类型数据（已映射为中文）
+                const attackTypesResponse = await fetch('/api/attack-types');
+                const attackTypesData = await attackTypesResponse.json();
+                
+                // 获取最近攻击记录（需要单独处理映射）
+                const recentAttacksResponse = await fetch('/api/recent-attacks');
+                const recentAttacksData = await recentAttacksResponse.json();
+                
+                // 更新系统状态
+                document.getElementById('totalAttacks').textContent = statsData.system_status.total_attacks || 0;
+                document.getElementById('todayAttacks').textContent = statsData.system_status.today_attacks || 0;
+                document.getElementById('blockedCount').textContent = statsData.system_status.blocked_count || 0;
+                document.getElementById('uptime').textContent = statsData.system_status.uptime || '0';
+                document.getElementById('lastUpdate').textContent = statsData.last_update;
+                
+                // 更新攻击类型图表（使用已映射的中文数据）
+                const attackTypeData = attackTypesData.data.map(item => ({
+                    value: item.value,
+                    name: item.name
+                }));
+                attackTypeChart.setOption({
+                    series: [{
+                        data: attackTypeData
+                    }]
+                });
+                
+                // 更新最近攻击记录（应用客户端映射）
+                updateRecentAttacks(recentAttacksData);
+                
+                // 更新拦截IP列表
+                updateBlockedIps(statsData.blocked_ips);
+                
+            } catch (error) {
+                console.error('更新数据失败:', error);
+            }
+        }
+
+        // 攻击类型映射表（与后端config.py保持一致）
+        const ATTACK_TYPE_MAPPING = {
+            "DDoS": "DDoS",
+            "SQL Injection": "SQL 注入",
+            "XSS": "XSS 攻击",
+            "Brute Force": "暴力破解",
+            "Port Scan": "端口扫描",
+            "Malware": "恶意软件",
+            "Phishing": "网络钓鱼",
+            "RCE": "远程代码执行",
+            "LFI/RFI": "文件包含攻击",
+            "CSRF": "跨站请求伪造",
+            "SSRF": "服务器端请求伪造",
+            "XXE": "XML外部实体注入",
+            "Directory Traversal": "目录遍历",
+            "Command Injection": "命令注入",
+            "File Upload": "文件上传漏洞",
+            "Authentication Bypass": "认证绕过",
+            "Session Hijacking": "会话劫持",
+            "Data Exfiltration": "数据窃取",
+            "Zero-day Exploit": "零日漏洞利用",
+            "Other": "其他攻击"
+        };
+
+        // 更新最近攻击记录
+        function updateRecentAttacks(attacks) {
+            const container = document.getElementById('recentAttacksList');
+            if (attacks.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted py-4"><i class="bi bi-check-circle" style="font-size: 2rem;"></i><p>暂无攻击记录</p></div>';
+                return;
+            }
+            
+            container.innerHTML = attacks.map(attack => {
+                // 映射攻击类型为中文显示
+                const attackTypeChinese = ATTACK_TYPE_MAPPING[attack.attack_type] || attack.attack_type;
+                
+                return `
+                <div class="attack-item ${attack.severity === 'critical' ? 'attack-critical' : attack.severity === 'high' ? 'attack-high' : ''}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <strong>${attack.source_ip}</strong>
+                        <span class="badge bg-${getSeverityColor(attack.severity)} status-badge">${attack.severity}</span>
+                    </div>
+                    <div class="text-muted small">${attackTypeChinese}</div>
+                    <div class="text-muted small">${new Date(attack.timestamp).toLocaleString()}</div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        // 更新拦截IP列表
+        function updateBlockedIps(ips) {
+            const container = document.getElementById('blockedIpsList');
+            if (ips.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted py-4"><i class="bi bi-check-circle" style="font-size: 2rem;"></i><p>暂无拦截IP</p></div>';
+                return;
+            }
+            
+            container.innerHTML = ips.map(ip => `
+                <div class="ip-item">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <code>${ip.ip_address}</code>
+                        <span class="badge bg-danger status-badge">已拦截</span>
+                    </div>
+                    <div class="text-muted small">拦截时间: ${new Date(ip.block_time).toLocaleString()}</div>
+                </div>
+            `).join('');
+        }
+
+        // 获取严重程度颜色
+        function getSeverityColor(severity) {
+            switch (severity) {
+                case 'critical': return 'danger';
+                case 'high': return 'warning';
+                case 'medium': return 'info';
+                case 'low': return 'success';
+                default: return 'secondary';
+            }
+        }
+
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 立即更新一次数据
+            updateDashboard();
+            
+            // 设置定时更新（每30秒）
+            setInterval(updateDashboard, 30000);
+            
+            // 窗口大小变化时重绘图表
+            window.addEventListener('resize', function() {
+                attackTypeChart.resize();
+                attackTrendChart.resize();
+            });
+        });
+    </script>
+</body>
+</html>
