@@ -173,11 +173,6 @@ def sample_log_lines(batch_size=BATCH_SIZE):
 
     return batches
 
-def extract_ip(line):
-    """尝试从日志行提取 IP"""
-    m = re.search(r"(\d{1,3}\.){3}\d{1,3}", line)
-    return m.group(0) if m else None
-
 def analyze_lines_ai(lines):
     """一次发送多行日志给 AI 分析，返回攻击IP和类型信息"""
     # 准备日志内容
