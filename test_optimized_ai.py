@@ -28,7 +28,10 @@ def test_optimized_ai():
     
     # 测试日志数据
     test_logs = [
-        "2024-01-01 12:00:00 [WARNING] Failed login attempt from 192.168.1.100",
+        "2024-01-01 12:00:00 [WARNING] Failed login attempt from 192.168.1.102",
+        "2024-01-01 12:00:00 [WARNING] Failed login attempt from 192.168.1.102",
+        "2024-01-01 12:00:00 [WARNING] Failed login attempt from 192.168.1.102",
+        "2024-01-01 12:00:00 [WARNING] Failed login attempt from 192.168.1.102",
         "2024-01-01 12:00:01 [ERROR] Invalid password for user admin from 192.168.1.100",
         "2024-01-01 12:00:02 [CRITICAL] Multiple failed login attempts from 192.168.1.100"
     ]

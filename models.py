@@ -1,8 +1,8 @@
 import sqlite3
 import json
 from datetime import datetime
-from typing import List, Dict, Optional, Any
-from config import DB_PATH, ATTACK_TYPES
+from typing import List, Dict, Any
+from config import DB_PATH
 
 class DatabaseManager:
     def __init__(self, db_path: str = DB_PATH):
