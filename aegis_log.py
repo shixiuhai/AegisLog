@@ -36,13 +36,28 @@ class FirewallAI:
 
     def init_chain(self):
         """初始化自定义黑名单链"""
-        chains = self._run_cmd("sudo iptables -L").splitlines()
-        if self.chain not in " ".join(chains):
+        # FIX: 使用 `iptables -S` 精确判断链是否已存在，并确保 INPUT 链已跳转到自定义链
+        rules = self._run_cmd("sudo iptables -S")
+        if not rules:
+            logger.error("无法获取 iptables 规则，跳过链初始化")
+            return
+
+        lines = rules.splitlines()
+        has_chain = any(line.strip() == f"-N {self.chain}" for line in lines)
+        if not has_chain:
             self._run_cmd(f"sudo iptables -N {self.chain}")
-            self._run_cmd(f"sudo iptables -I INPUT -j {self.chain}")
-            logger.info(f"链 {self.chain} 已创建并加入 INPUT")
+            logger.info(f"链 {self.chain} 已创建")
         else:
             logger.info(f"链 {self.chain} 已存在")
+
+        # 确保 INPUT 有跳转到该链
+        input_rules = [l for l in lines if l.startswith("-A INPUT ")]
+        has_jump = any(f"-j {self.chain}" in l for l in input_rules)
+        if not has_jump:
+            self._run_cmd(f"sudo iptables -I INPUT -j {self.chain}")
+            logger.info(f"链 {self.chain} 已加入 INPUT")
+        else:
+            logger.info(f"INPUT 已包含跳转到 {self.chain}")
 
     def add_ip(self, ip):
         """添加 IP 到黑名单"""
@@ -53,30 +68,56 @@ class FirewallAI:
 
     def remove_ip(self, ip):
         """从黑名单删除 IP"""
-        rules = self._run_cmd(f"sudo iptables -L {self.chain} --line-numbers").splitlines()
-        for line in rules:
-            if ip in line:
-                num = line.split()[0]
-                self._run_cmd(f"sudo iptables -D {self.chain} {num}")
-                logger.info(f"IP {ip} 已删除")
-                return
+        # FIX: 基于 `iptables -S <chain>` 精确删除匹配规则，避免行号变化问题；并删除所有匹配项
+        rules = self._run_cmd(f"sudo iptables -S {self.chain}")
+        if not rules:
+            logger.warning(f"无法获取链 {self.chain} 规则，删除 {ip} 失败")
+            return
+
+        removed_any = False
+        for line in rules.splitlines():
+            # 目标格式: -A CHAIN -s <ip>/32 -j DROP (可能还有其他匹配项)
+            if line.startswith(f"-A {self.chain} ") and f"-s {ip}" in line and " -j DROP" in line:
+                delete_cmd = "sudo iptables " + line.replace("-A", "-D", 1)
+                out = self._run_cmd(delete_cmd)
+                removed_any = True
+        if removed_any:
+            logger.info(f"IP {ip} 已删除")
+        else:
+            logger.info(f"未在 {self.chain} 找到 IP {ip} 的 DROP 规则")
 
     def get_blacklist(self):
         """返回当前黑名单 IP 列表"""
-        rules = self._run_cmd(f"sudo iptables -L {self.chain} -n").splitlines()
+        # 仍使用 -n 列表，但修复提取 IP 的分组错误
+        rules = self._run_cmd(f"sudo iptables -L {self.chain} -n")
+        if not rules:
+            return []
         ips = []
-        for line in rules:
+        for line in rules.splitlines():
             m = re.search(r"(\d{1,3}\.){3}\d{1,3}", line)
             if m:
+                # FIX: group(0) 才是完整 IP
                 ips.append(m.group(0))
         return ips
 
     def trim_blacklist(self):
         """保持黑名单不超过最大数量"""
+        # FIX: 防止在删除失败时死循环；增加尝试上限并在无变化时中断
+        attempts = 0
+        max_attempts = 2 * max(1, BLACKLIST_MAX)  # 合理上限
+        prev_len = None
         ips = self.get_blacklist()
-        while len(ips) > BLACKLIST_MAX:
+        while len(ips) > BLACKLIST_MAX and attempts < max_attempts:
+            prev_len = len(ips)
+            # 按当前列表的“第一条”删（近似最早加入）；如果失败会触发保护逻辑
             self.remove_ip(ips[0])
+            attempts += 1
             ips = self.get_blacklist()
+            if len(ips) == prev_len:
+                logger.warning("trim_blacklist 未能减少黑名单数量，可能删除失败，停止以避免死循环")
+                break
+        if len(ips) > BLACKLIST_MAX:
+            logger.warning(f"黑名单长度仍为 {len(ips)}，超过上限 {BLACKLIST_MAX}，请检查规则删除是否受限")
 
 # ================= 日志分析 =================
 def sample_log_lines(batch_size=BATCH_SIZE):
@@ -131,6 +172,7 @@ def sample_log_lines(batch_size=BATCH_SIZE):
             logger.error(f"读取日志文件失败 {file_path}: {str(e)}")
 
     return batches
+
 def extract_ip(line):
     """尝试从日志行提取 IP"""
     m = re.search(r"(\d{1,3}\.){3}\d{1,3}", line)
