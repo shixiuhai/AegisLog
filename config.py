@@ -14,7 +14,7 @@ USE_TAIL_COMMAND = True                    # 是否使用tail命令优化大文�
 
 # AI 接口配置
 AI_API_URL = "https://api.deepseek.com/v1"           # AI 判定接口
-AI_API_KEY = "-1234"           # AI 接口 key
+AI_API_KEY = "sk-585fbf420f9245ac8e61410fed502bcc"           # AI 接口 key
 CHAIN_NAME = "BLACKLIST"                   # iptables 黑名单链名
 
 # AI 提示词
